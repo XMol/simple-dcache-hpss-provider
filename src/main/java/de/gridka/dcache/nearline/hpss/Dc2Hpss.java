@@ -1,97 +1,180 @@
 package de.gridka.dcache.nearline.hpss;
 
-import java.util.Map;
-import java.util.UUID;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 
+import java.net.URI;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+
+import org.dcache.pool.nearline.spi.AbstractBlockingNearlineStorage;
 import org.dcache.pool.nearline.spi.FlushRequest;
-import org.dcache.pool.nearline.spi.NearlineStorage;
-import org.dcache.pool.nearline.spi.RemoveRequest;
 import org.dcache.pool.nearline.spi.StageRequest;
+import org.dcache.pool.nearline.spi.RemoveRequest;
 
-public class Dc2Hpss implements NearlineStorage
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class Dc2Hpss extends AbstractBlockingNearlineStorage
 {
-    protected final String type;
-    protected final String name;
-
-    public Dc2Hpss(String type, String name)
-    {
-        this.type = type;
-        this.name = name;
+  private static final Logger LOGGER = LoggerFactory.getLogger(Dc2Hpss.class);
+  
+  private Path mountpoint = null;
+  
+  private static final String MOUNTPOINT = "mountpoint";
+  private static final String CONCURRENT_PUTS = "puts";
+  private static final String CONCURRENT_GETS = "gets";
+  private static final String CONCURRENT_DELS = "dels";
+  
+  private static final int DEFAULT_FLUSH_THREADS = 10;
+  private static final int DEFAULT_STAGE_THREADS = 1000;
+  private static final int DEFAULT_REMOVE_THREADS = 1;
+  
+  ExecutorService flusher = Executors.newFixedThreadPool(DEFAULT_FLUSH_THREADS);
+  ExecutorService stager = Executors.newFixedThreadPool(DEFAULT_STAGE_THREADS);
+  ExecutorService remover = Executors.newFixedThreadPool(DEFAULT_REMOVE_THREADS);
+  
+  public Dc2Hpss(String type, String name)
+  {
+      super(type, name);
+  }
+  
+  /**
+   * Applies a new configuration.
+   *
+   * @param properties
+   * @throws IllegalArgumentException if the configuration is invalid.
+   * @throws IllegalStateException if there are current requests.
+   */
+  @Override
+  public void configure(Map<String, String> properties) throws IllegalArgumentException
+  {
+    LOGGER.trace("Configuring HSM interface '{}' with type '{}'.", name, type);
+    String mnt = properties.get(MOUNTPOINT);
+    checkArgument(mnt == null && mountpoint == null,
+                  MOUNTPOINT + " attribute is required!");
+    if (mnt != null) {
+      Path dir = FileSystems.getDefault().getPath(mnt);
+      checkArgument(Files.isDirectory(dir), dir + " is not a directory.");
+      this.mountpoint = mnt;
+      LOGGER.trace("Set mountpoint to {}.", mnt);
     }
-
-    /**
-     * Flush all files in {@code requests} to nearline storage.
-     *
-     * @param requests
-     */
-    @Override
-    public void flush(Iterable<FlushRequest> requests)
-    {
-        throw new UnsupportedOperationException("Not implemented");
+    
+    int newConcurrentPuts = properties.get(CONCURRENT_PUTS);
+    if (newConcurrentPuts != null) {
+      flusher.shutdown();
+      this.flusher = Executors.newFixedThreadPool(newConcurrentPuts);
+      LOGGER.trace("Recreated flusher with {} threads.", newConcurrentPuts);
     }
-
-    /**
-     * Stage all files in {@code requests} from nearline storage.
-     *
-     * @param requests
-     */
-    @Override
-    public void stage(Iterable<StageRequest> requests)
-    {
-        throw new UnsupportedOperationException("Not implemented");
+    
+    int newConcurrentGets = properties.get(CONCURRENT_GETS);
+    if (newConcurrentGets != null) {
+      stager.shutdown();
+      this.stager = Executors.newFixedThreadPool(newConcurrentGets);
+      LOGGER.trace("Recreated stager with {} threads.", newConcurrentGets);
     }
-
-    /**
-     * Delete all files in {@code requests} from nearline storage.
-     *
-     * @param requests
-     */
-    @Override
-    public void remove(Iterable<RemoveRequest> requests)
-    {
-        throw new UnsupportedOperationException("Not implemented");
+    
+    int newConcurrentDels = properties.get(CONCURRENT_DELS);
+    if (newConcurrentDels != null) {
+      remover.shutdown();
+      this.remover = Executors.newFixedThreadPool(newConcurrentDels);
+      LOGGER.trace("Recreated remover with {} threads.", newConcurrentDels);
     }
+  }
+  
+  @Override
+  protected Executor getFlushExecutor()
+  {
+      return flusher;
+  }
+  
+  @Override
+  protected Executor getStageExecutor()
+  {
+      return stager;
+  }
+  
+  @Override
+  protected Executor getRemoveExecutor()
+  {
+      return remover;
+  }
+  
+  private Path getExternalPath(String storageClass, String pnfsId)
+  {
+    return FileSystems.getDefault().getPath(
+        mountpoint + '/' + storageClass + '/' + pnfsId
+    );
+  }
+  
+  @Override
+  public Set<URI> flush(FlushRequest request) throws IOException
+  {
+    private final FileAttributes fileAttributes = request.getFileAttributes();
+    private final String pnfsId = fileAttributes.getPnfsId().toString()
+    private final Path path = request.getFile().toPath();
+    private final Path externalPath = getExternalPath(
+        fileAttributes().getStorageClass(), pnfsId
+    );
+    LOGGER.trace("Constructed {} as external path.", externalPath);
+    
+    LOGGER.debug("Start copy of {}.", pnfsId);
+    Files.copy(path, externalPath, StandardCopyOption.REPLACE_EXISTING);
+    LOGGER.debug("Finished copy of {}.", pnfsId);
+    
+    URI uri = new URI(type, name, externalPath, null, null);
+    LOGGER.trace("Return {} as result URI.", uri);
+    return return Collections.singleton(uri);
+  }
 
-    /**
-     * Cancel any flush, stage or remove request with the given id.
-     * <p>
-     * The failed method of any cancelled request should be called with a
-     * CancellationException. If the request completes before it can be
-     * cancelled, then the cancellation should be ignored and the completed
-     * or failed method should be called as appropriate.
-     * <p>
-     * A call to cancel must be non-blocking.
-     *
-     * @param uuid id of the request to cancel
-     */
-    @Override
-    public void cancel(UUID uuid)
-    {
+  @Override
+  public Set<Checksum> stage(StageRequest request) throws IOException
+  {
+    private final FileAttributes fileAttributes = request.getFileAttributes();
+    private final String pnfsId = fileAttributes.getPnfsId().toString()
+    private final Path path = request.getFile().toPath();
+    private final Path externalPath = getExternalPath(
+        fileAttributes().getStorageClass(), pnfsId
+    );
+    LOGGER.trace("Constructed {} as external path.", externalPath);
+    
+    LOGGER.debug("Start copy of {}.", pnfsId);
+    Files.copy(externalPath, path);
+    LOGGER.debug("Finished copy of {}.", pnfsId);
+    
+    return Collections.emptySet();
+  }
 
-    }
+  @Override
+  public void remove(RemoveRequest request) throws IOException
+  {
+    private final Path externalPath = getExternalPath(
+        request.getFileAttributes().getStorageClass(),
+        request.getFileAttributes().getId().toString()
+    );
+    
+    LOGGER.trace("Delete {}.", externalPath);
+    Files.deleteIfExists(externalPath);
+  }
 
-    /**
-     * Applies a new configuration.
-     *
-     * @param properties
-     * @throws IllegalArgumentException if the configuration is invalid
-     */
-    @Override
-    public void configure(Map<String, String> properties) throws IllegalArgumentException
-    {
-
-    }
-
-    /**
-     * Cancels all requests and initiates a shutdown of the nearline storage
-     * interface.
-     * <p>
-     * This method does not wait for actively executing requests to
-     * terminate.
-     */
-    @Override
-    public void shutdown()
-    {
-
-    }
+  /**
+   * Cancels all requests and initiates a shutdown of the nearline storage
+   * interface.
+   * <p>
+   * This method does not wait for actively executing requests to
+   * terminate.
+   */
+  @Override
+  public void shutdown()
+  {
+    super.shutdown();
+    flusher.shutdown();
+    stager.shutdown();
+    remover.shutdown();
+  }
+  
 }
