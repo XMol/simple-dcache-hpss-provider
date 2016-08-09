@@ -114,10 +114,10 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   @Override
   public Set<URI> flush(FlushRequest request) throws IOException
   {
-    private final FileAttributes fileAttributes = request.getFileAttributes();
-    private final String pnfsId = fileAttributes.getPnfsId().toString()
-    private final Path path = request.getFile().toPath();
-    private final Path externalPath = getExternalPath(
+    FileAttributes fileAttributes = request.getFileAttributes();
+    String pnfsId = fileAttributes.getPnfsId().toString();
+    Path path = request.getFile().toPath();
+    Path externalPath = getExternalPath(
         fileAttributes().getStorageClass(), pnfsId
     );
     LOGGER.trace("Constructed {} as external path.", externalPath);
@@ -128,16 +128,16 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     
     URI uri = new URI(type, name, externalPath, null, null);
     LOGGER.trace("Return {} as result URI.", uri);
-    return return Collections.singleton(uri);
+    return Collections.singleton(uri);
   }
 
   @Override
   public Set<Checksum> stage(StageRequest request) throws IOException
   {
-    private final FileAttributes fileAttributes = request.getFileAttributes();
-    private final String pnfsId = fileAttributes.getPnfsId().toString()
-    private final Path path = request.getFile().toPath();
-    private final Path externalPath = getExternalPath(
+    FileAttributes fileAttributes = request.getFileAttributes();
+    String pnfsId = fileAttributes.getPnfsId().toString();
+    Path path = request.getFile().toPath();
+    Path externalPath = getExternalPath(
         fileAttributes().getStorageClass(), pnfsId
     );
     LOGGER.trace("Constructed {} as external path.", externalPath);
@@ -152,7 +152,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   @Override
   public void remove(RemoveRequest request) throws IOException
   {
-    private final Path externalPath = getExternalPath(
+    Path externalPath = getExternalPath(
         request.getFileAttributes().getStorageClass(),
         request.getFileAttributes().getId().toString()
     );
