@@ -11,7 +11,7 @@
     <name>Connect dCache to HPSS.</name>
 
     <properties>
-        <version.dcache>2.16.6</version.dcache>
+        <version.dcache>2.16.8</version.dcache>
 	<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
