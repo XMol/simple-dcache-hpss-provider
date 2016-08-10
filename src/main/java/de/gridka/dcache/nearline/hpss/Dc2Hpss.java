@@ -3,15 +3,22 @@ package de.gridka.dcache.nearline.hpss;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 
+import java.io.IOException;
+import java.lang.Integer;
+import java.lang.NumberFormatException;
 import java.net.URI;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 
-import org.dcache.pool.nearline.spi.AbstractBlockingNearlineStorage;
+import org.dcache.pool.nearline.AbstractBlockingNearlineStorage;
 import org.dcache.pool.nearline.spi.FlushRequest;
 import org.dcache.pool.nearline.spi.StageRequest;
 import org.dcache.pool.nearline.spi.RemoveRequest;
@@ -51,7 +58,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
    * @throws IllegalStateException if there are current requests.
    */
   @Override
-  public void configure(Map<String, String> properties) throws IllegalArgumentException
+  public void configure(Map<String, String> properties) throws IllegalArgumentException, NumberFormatException
   {
     LOGGER.trace("Configuring HSM interface '{}' with type '{}'.", name, type);
     String mnt = properties.get(MOUNTPOINT);
@@ -60,28 +67,46 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     if (mnt != null) {
       Path dir = FileSystems.getDefault().getPath(mnt);
       checkArgument(Files.isDirectory(dir), dir + " is not a directory.");
-      this.mountpoint = mnt;
+      this.mountpoint = dir;
       LOGGER.trace("Set mountpoint to {}.", mnt);
     }
     
-    int newConcurrentPuts = properties.get(CONCURRENT_PUTS);
+    int iNewConcurrentPuts;
+    String newConcurrentPuts = properties.get(CONCURRENT_PUTS);
     if (newConcurrentPuts != null) {
+      try {
+        iNewConcurrentPuts = Integer.parseInt(newConcurrentPuts);
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException(CONCURRENT_PUTS + " is not an integer number!", e);
+      }
       flusher.shutdown();
-      this.flusher = Executors.newFixedThreadPool(newConcurrentPuts);
+      this.flusher = Executors.newFixedThreadPool(iNewConcurrentPuts);
       LOGGER.trace("Recreated flusher with {} threads.", newConcurrentPuts);
     }
     
-    int newConcurrentGets = properties.get(CONCURRENT_GETS);
+    int iNewConcurrentGets;
+    String newConcurrentGets = properties.get(CONCURRENT_GETS);
     if (newConcurrentGets != null) {
+      try {
+        iNewConcurrentGets = Integer.parseInt(newConcurrentGets);
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException(CONCURRENT_GETS + " is not an integer number!", e);
+      }
       stager.shutdown();
-      this.stager = Executors.newFixedThreadPool(newConcurrentGets);
+      this.stager = Executors.newFixedThreadPool(iNewConcurrentGets);
       LOGGER.trace("Recreated stager with {} threads.", newConcurrentGets);
     }
     
-    int newConcurrentDels = properties.get(CONCURRENT_DELS);
+    int iNewConcurrentDels;
+    String newConcurrentDels = properties.get(CONCURRENT_DELS);
     if (newConcurrentDels != null) {
+      try {
+        iNewConcurrentDels = Integer.parseInt(newConcurrentDels);
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException(CONCURRENT_DELS + " is not an integer number!", e);
+      }
       remover.shutdown();
-      this.remover = Executors.newFixedThreadPool(newConcurrentDels);
+      this.remover = Executors.newFixedThreadPool(iNewConcurrentDels);
       LOGGER.trace("Recreated remover with {} threads.", newConcurrentDels);
     }
   }
@@ -107,7 +132,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   private Path getExternalPath(String storageClass, String pnfsId)
   {
     return FileSystems.getDefault().getPath(
-        mountpoint + '/' + storageClass + '/' + pnfsId
+        mountpoint.toString() + '/' + storageClass + '/' + pnfsId
     );
   }
   
@@ -118,7 +143,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
     Path externalPath = getExternalPath(
-        fileAttributes().getStorageClass(), pnfsId
+        fileAttributes.getStorageClass(), pnfsId
     );
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
@@ -126,7 +151,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     Files.copy(path, externalPath, StandardCopyOption.REPLACE_EXISTING);
     LOGGER.debug("Finished copy of {}.", pnfsId);
     
-    URI uri = new URI(type, name, externalPath, null, null);
+    URI uri = new URI(type, name, externalPath.toString(), null, null);
     LOGGER.trace("Return {} as result URI.", uri);
     return Collections.singleton(uri);
   }
