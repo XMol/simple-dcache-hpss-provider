@@ -7,9 +7,11 @@ import java.io.IOException;
 import java.lang.Integer;
 import java.lang.NumberFormatException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Collections;
 import java.util.Map;
@@ -18,10 +20,14 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 
+import diskCacheV111.util.CacheException;
+
 import org.dcache.pool.nearline.AbstractBlockingNearlineStorage;
 import org.dcache.pool.nearline.spi.FlushRequest;
 import org.dcache.pool.nearline.spi.StageRequest;
 import org.dcache.pool.nearline.spi.RemoveRequest;
+import org.dcache.util.Checksum;
+import org.dcache.vehicles.FileAttributes;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,10 +68,9 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   {
     LOGGER.trace("Configuring HSM interface '{}' with type '{}'.", name, type);
     String mnt = properties.get(MOUNTPOINT);
-    checkArgument(mnt == null && mountpoint == null,
-                  MOUNTPOINT + " attribute is required!");
+    checkArgument(mnt == null && mountpoint == null, MOUNTPOINT + " attribute is required!");
     if (mnt != null) {
-      Path dir = FileSystems.getDefault().getPath(mnt);
+      Path dir = Paths.get(mnt);
       checkArgument(Files.isDirectory(dir), dir + " is not a directory.");
       this.mountpoint = dir;
       LOGGER.trace("Set mountpoint to {}.", mnt);
@@ -131,24 +136,24 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   
   private Path getExternalPath(String storageClass, String pnfsId)
   {
-    return FileSystems.getDefault().getPath(
-        mountpoint.toString() + '/' + storageClass + '/' + pnfsId
-    );
+    return Paths.get(mountpoint.toString() + '/' + storageClass + '/' + pnfsId);
   }
   
   @Override
-  public Set<URI> flush(FlushRequest request) throws IOException
+  public Set<URI> flush(FlushRequest request) throws CacheException, URISyntaxException
   {
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(
-        fileAttributes.getStorageClass(), pnfsId
-    );
+    Path externalPath = getExternalPath(fileAttributes.getStorageClass(), pnfsId);
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
-    Files.copy(path, externalPath, StandardCopyOption.REPLACE_EXISTING);
+    try {
+      Files.copy(path, externalPath, StandardCopyOption.REPLACE_EXISTING);
+    } catch (IOException e) {
+      throw new CacheException(2, "Copy to " + externalPath + " failed.", e);
+    }
     LOGGER.debug("Finished copy of {}.", pnfsId);
     
     URI uri = new URI(type, name, externalPath.toString(), null, null);
@@ -157,33 +162,37 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   }
 
   @Override
-  public Set<Checksum> stage(StageRequest request) throws IOException
+  public Set<Checksum> stage(StageRequest request) throws CacheException
   {
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(
-        fileAttributes().getStorageClass(), pnfsId
-    );
+    Path externalPath = getExternalPath(fileAttributes.getStorageClass(), pnfsId);
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
-    Files.copy(externalPath, path);
+    try {
+      Files.copy(externalPath, path);
+    } catch (IOException e) {
+      throw new CacheException(3, "Copy of " + externalPath + " failed.", e);
+    }
     LOGGER.debug("Finished copy of {}.", pnfsId);
     
+    // No easy way to get the file's checkusm.
     return Collections.emptySet();
   }
 
   @Override
-  public void remove(RemoveRequest request) throws IOException
+  public void remove(RemoveRequest request) throws CacheException
   {
-    Path externalPath = getExternalPath(
-        request.getFileAttributes().getStorageClass(),
-        request.getFileAttributes().getId().toString()
-    );
+    Path externalPath = Paths.get(request.getUri());
     
-    LOGGER.trace("Delete {}.", externalPath);
-    Files.deleteIfExists(externalPath);
+    LOGGER.trace("Delete {}.", externalPath.toString());
+    try {
+      Files.deleteIfExists(externalPath);
+    } catch (IOException e) {
+      throw new CacheException("Deletion of " + externalPath.toString() + " failed.", e);
+    }
   }
 
   /**
