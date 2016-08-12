@@ -187,7 +187,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   @Override
   public void remove(RemoveRequest request) throws CacheException
   {
-    Path externalPath = Paths.get(request.getUri());
+    Path externalPath = Paths.get(request.getUri().getPath());
     
     LOGGER.trace("Delete {}.", externalPath.toString());
     try {
