@@ -138,7 +138,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   // Optionally evaluate any information of the file to construct the path.
   private Path getExternalPath(StorageInfo storageInfo, String pnfsId)
   {
-    return Paths.get(mountpoint.toString() + '/' + pnfsId);
+    return Paths.get(mountpoint.toString() + '/' pnfsId);
   }
   
   @Override
@@ -187,10 +187,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   @Override
   public void remove(RemoveRequest request) throws CacheException
   {
-    FileAttributes fileAttributes = request.getFileAttributes();
-    String pnfsId = fileAttributes.getPnfsId().toString();
-    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
-    LOGGER.trace("Constructed {} as external path.", externalPath);
+    Path externalPath = Paths.get(request.getUri());
     
     LOGGER.trace("Delete {}.", externalPath.toString());
     try {
