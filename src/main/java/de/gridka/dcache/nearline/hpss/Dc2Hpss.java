@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 
 import diskCacheV111.util.CacheException;
+import diskCacheV111.vehicles.StorageInfo;
 
 import org.dcache.pool.nearline.AbstractBlockingNearlineStorage;
 import org.dcache.pool.nearline.spi.FlushRequest;
@@ -71,8 +72,9 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     String mnt = properties.get(MOUNTPOINT);
     checkArgument(mnt != null || mountpoint != null, MOUNTPOINT + " attribute is required!");
     if (mnt != null) {
-      this.mountpoint = FileSystems.getDefault().getPath(mnt);
-      checkArgument(Files.isDirectory(mountpoint), mountpoint.toString() + " is not a directory!");
+      Path dir = FileSystems.getDefault().getPath(mnt);
+      checkArgument(Files.isDirectory(dir), dir.toString() + " is not a directory!");
+      this.mountpoint = dir;
       LOGGER.trace("Set mountpoint to {}.", mnt);
     }
     
@@ -134,9 +136,9 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
       return remover;
   }
   
-  private Path getExternalPath(String storageClass, String pnfsId)
+  private Path getExternalPath(StorageInfo storageInfo, String pnfsId)
   {
-    return Paths.get(mountpoint.toString() + '/' + storageClass + '/' + pnfsId);
+    return Paths.get(mountpoint.toString() + '/' + storageInfo.getKey("store")+ '/' + storageInfo.getKey("group") + '/' + pnfsId);
   }
   
   @Override
@@ -145,7 +147,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(fileAttributes.getStorageClass(), pnfsId);
+    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
@@ -167,7 +169,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(fileAttributes.getStorageClass(), pnfsId);
+    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
