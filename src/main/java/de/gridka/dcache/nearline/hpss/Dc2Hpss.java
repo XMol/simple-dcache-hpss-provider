@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -64,15 +65,13 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
    * @throws IllegalStateException if there are current requests.
    */
   @Override
-  public void configure(Map<String, String> properties) throws IllegalArgumentException, NumberFormatException
+  public void configure(Map<String, String> properties) throws IllegalArgumentException, NumberFormatException, InvalidPathException
   {
     LOGGER.trace("Configuring HSM interface '{}' with type '{}'.", name, type);
     String mnt = properties.get(MOUNTPOINT);
     checkArgument(mnt != null || mountpoint != null, MOUNTPOINT + " attribute is required!");
     if (mnt != null) {
-      Path dir = Paths.get(mnt);
-      checkArgument(!Files.isDirectory(dir), dir + " is not a directory.");
-      this.mountpoint = dir;
+      this.mountpoint = FileSystems.getDefault().getPath(mnt);
       LOGGER.trace("Set mountpoint to {}.", mnt);
     }
     
