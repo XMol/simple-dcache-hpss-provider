@@ -138,7 +138,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   // Optionally evaluate any information of the file to construct the path.
   private Path getExternalPath(StorageInfo storageInfo, String pnfsId)
   {
-    return Paths.get(mountpoint.toString() + '/' pnfsId);
+    return Paths.get(mountpoint.toString() + '/' + pnfsId);
   }
   
   @Override
