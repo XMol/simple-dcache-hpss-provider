@@ -72,7 +72,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     checkArgument(mnt != null || mountpoint != null, MOUNTPOINT + " attribute is required!");
     if (mnt != null) {
       this.mountpoint = FileSystems.getDefault().getPath(mnt);
-      checkArgument(!Files.isDirectory(mountpoint), mountpoint.toString() + " is not a directory!");
+      checkArgument(Files.isDirectory(mountpoint), mountpoint.toString() + " is not a directory!");
       LOGGER.trace("Set mountpoint to {}.", mnt);
     }
     
