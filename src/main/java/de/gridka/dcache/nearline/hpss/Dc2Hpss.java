@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 
 import diskCacheV111.util.CacheException;
+import diskCacheV111.vehicles.StorageInfo;
 
 import org.dcache.pool.nearline.AbstractBlockingNearlineStorage;
 import org.dcache.pool.nearline.spi.FlushRequest;
@@ -134,9 +135,10 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
       return remover;
   }
   
-  private Path getExternalPath(String storageClass, String pnfsId)
+  // Optionally evaluate any information of the file to construct the path.
+  private Path getExternalPath(StorageInfo storageInfo, String pnfsId)
   {
-    return Paths.get(mountpoint.toString() + '/' + storageClass + '/' + pnfsId);
+    return Paths.get(mountpoint.toString() + '/' pnfsId);
   }
   
   @Override
@@ -145,7 +147,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(fileAttributes.getStorageClass(), pnfsId);
+    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
@@ -167,7 +169,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(fileAttributes.getStorageClass(), pnfsId);
+    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
     LOGGER.trace("Constructed {} as external path.", externalPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
