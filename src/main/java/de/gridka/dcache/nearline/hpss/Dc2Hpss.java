@@ -68,10 +68,10 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   {
     LOGGER.trace("Configuring HSM interface '{}' with type '{}'.", name, type);
     String mnt = properties.get(MOUNTPOINT);
-    checkArgument(mnt == null && mountpoint == null, MOUNTPOINT + " attribute is required!");
+    checkArgument(mnt != null || mountpoint != null, MOUNTPOINT + " attribute is required!");
     if (mnt != null) {
       Path dir = Paths.get(mnt);
-      checkArgument(Files.isDirectory(dir), dir + " is not a directory.");
+      checkArgument(!Files.isDirectory(dir), dir + " is not a directory.");
       this.mountpoint = dir;
       LOGGER.trace("Set mountpoint to {}.", mnt);
     }
