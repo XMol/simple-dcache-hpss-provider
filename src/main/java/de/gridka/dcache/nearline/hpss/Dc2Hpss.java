@@ -198,7 +198,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     
     LOGGER.trace("Delete {}.", externalPath.toString());
     try {
-      Files.deleteIfExists(externalPath);
+      Files.delete(externalPath);
     } catch (IOException e) {
       throw new CacheException("Deletion of " + externalPath.toString() + " failed.", e);
     }
