@@ -6,6 +6,7 @@ import static com.google.common.base.Preconditions.checkState;
 import java.io.IOException;
 import java.lang.Integer;
 import java.lang.NumberFormatException;
+import java.lang.StringBuilder;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileSystems;
@@ -38,7 +39,7 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
 {
   private static final Logger LOGGER = LoggerFactory.getLogger(Dc2Hpss.class);
   
-  private Path mountpoint = null;
+  private String mountpoint = null;
   
   private static final String MOUNTPOINT = "mountpoint";
   private static final String CONCURRENT_PUTS = "puts";
@@ -72,8 +73,8 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     String mnt = properties.get(MOUNTPOINT);
     checkArgument(mnt != null || mountpoint != null, MOUNTPOINT + " attribute is required!");
     if (mnt != null) {
-      this.mountpoint = FileSystems.getDefault().getPath(mnt);
-      checkArgument(Files.isDirectory(mountpoint), mountpoint.toString() + " is not a directory!");
+      checkArgument(Files.isDirectory(Paths.get(mnt)), mnt + " is not a directory!");
+      this.mountpoint = mnt;
       LOGGER.trace("Set mountpoint to {}.", mnt);
     }
     
@@ -136,9 +137,13 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   }
   
   // Optionally evaluate any information of the file to construct the path.
-  private Path getExternalPath(StorageInfo storageInfo, String pnfsId)
+  private String getHsmPath(StorageInfo storageInfo, String pnfsId)
   {
-    return Paths.get(mountpoint.toString() + '/' + pnfsId);
+    StringBuilder sb = new StringBuilder();
+    //sb.append('/' + storageInfo.getKey("store"));
+    //sb.append('/' + storageInfo.getKey("group"));
+    sb.append('/' + pnfsId);
+    return sb.toString();
   }
   
   @Override
@@ -147,19 +152,19 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
-    LOGGER.trace("Constructed {} as external path.", externalPath);
+    String hsmPath = getHsmPath(fileAttributes.getStorageInfo(), pnfsId);
+    LOGGER.trace("Constructed {} as hsm path.", hsmPath);
+    Path externalPath = Paths.get(mountpoint, hsmPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
     try {
       Files.copy(path, externalPath, StandardCopyOption.REPLACE_EXISTING);
     } catch (IOException e) {
-      throw new CacheException(2, "Copy to " + externalPath + " failed.", e);
+      throw new CacheException(2, "Copy to " + externalPath.toString() + " failed.", e);
     }
     LOGGER.debug("Finished copy of {}.", pnfsId);
     
-    URI uri = new URI(type, name, externalPath.toString(), null, null);
-    LOGGER.trace("Return {} as result URI.", uri);
+    URI uri = new URI(type, name, hsmPath, null, null);
     return Collections.singleton(uri);
   }
 
@@ -169,14 +174,15 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
     FileAttributes fileAttributes = request.getFileAttributes();
     String pnfsId = fileAttributes.getPnfsId().toString();
     Path path = request.getFile().toPath();
-    Path externalPath = getExternalPath(fileAttributes.getStorageInfo(), pnfsId);
-    LOGGER.trace("Constructed {} as external path.", externalPath);
+    String hsmPath = getHsmPath(fileAttributes.getStorageInfo(), pnfsId);
+    LOGGER.trace("Constructed {} as hsm path.", hsmPath);
+    Path externalPath = Paths.get(mountpoint, hsmPath);
     
     LOGGER.debug("Start copy of {}.", pnfsId);
     try {
       Files.copy(externalPath, path);
     } catch (IOException e) {
-      throw new CacheException(3, "Copy of " + externalPath + " failed.", e);
+      throw new CacheException(3, "Copy of " + externalPath.toString() + " failed.", e);
     }
     LOGGER.debug("Finished copy of {}.", pnfsId);
     
@@ -187,7 +193,8 @@ public class Dc2Hpss extends AbstractBlockingNearlineStorage
   @Override
   public void remove(RemoveRequest request) throws CacheException
   {
-    Path externalPath = Paths.get(request.getUri().getPath());
+    String hsmPath = request.getUri().getPath();
+    Path externalPath = Paths.get(mountpoint, hsmPath);
     
     LOGGER.trace("Delete {}.", externalPath.toString());
     try {
